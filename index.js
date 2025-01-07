@@ -162,6 +162,60 @@ app.get('/pricing/:skuId', async (req, res) => {
     }
 });
 
+app.get('/collectionProductDetails', async (req, res) => {
+    try {
+        const collectionId = req.query.collectionId;
+        if (!collectionId) {
+            return res.status(400).send('Collection ID is required');
+        }
+
+        const headers = {
+            'X-VTEX-API-AppKey': VTEX_API_APP_KEY,
+            'X-VTEX-API-AppToken': VTEX_API_APP_TOKEN,
+        };
+
+        // Fetch collection products
+        const collectionUrl = `${VTEX_API_URL}/api/catalog/pvt/collection/${collectionId}/products`;
+        const collectionData = await fetchFromVtex(collectionUrl, headers);
+
+        // Check if products exist in the collection
+        if (!collectionData || !collectionData.Data || collectionData.Data.length === 0) {
+            return res.status(404).send('No products found in the collection');
+        }
+
+        // Fetch additional details for each product
+        const detailedProducts = await Promise.all(
+            collectionData.Data.map(async (product) => {
+                const skuId = product.SkuId;
+                const skuUrl = `${VTEX_API_URL}/api/catalog_system/pvt/sku/stockkeepingunitbyid/${skuId}`;
+                try {
+                    const skuDetails = await fetchFromVtex(skuUrl, headers);
+                    return {
+                        ...product,
+                        SkuDetails: skuDetails, // Merge SKU details
+                    };
+                } catch (error) {
+                    console.error(`Error fetching details for SKU ID: ${skuId}`, error);
+                    return {
+                        ...product,
+                        SkuDetails: null, // Handle errors gracefully
+                    };
+                }
+            })
+        );
+
+        // Return merged data
+        res.json({
+            CollectionId: collectionId,
+            Products: detailedProducts,
+        });
+    } catch (error) {
+        console.error('Error fetching collection product details:', error);
+        res.status(500).send('Error fetching product details from VTEX API');
+    }
+});
+
+
 app.get('/', (req, res) => {
     res.send('VTEX API Server is running!');
 });
