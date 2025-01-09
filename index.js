@@ -28,6 +28,39 @@ const fetchFromVtex = async (url, headers = {}) => {
         throw error;
     }
 };
+app.get('/recommendations/:skuId', async (req, res) => {
+    try {
+        const skuId = req.params.skuId;
+        if (!skuId) {
+            return res.status(400).send('SKU ID is required');
+        }
+
+        const headers = {
+            'X-VTEX-API-AppKey': VTEX_API_APP_KEY,
+            'X-VTEX-API-AppToken': VTEX_API_APP_TOKEN,
+        };
+
+        // Step 1: Fetch product details using the SKU ID
+        const skuUrl = `${VTEX_API_URL}/api/catalog_system/pvt/sku/stockkeepingunitbyid/${skuId}`;
+        const skuDetails = await fetchFromVtex(skuUrl, headers);
+
+        const productId = skuDetails.ProductId; // Extract the Product ID
+        console.log(productId);
+
+        if (!productId) {
+            return res.status(404).send('Product ID not found for the given SKU ID');
+        }
+
+        // Step 2: Fetch recommendation products using the Product ID
+        const recommendationsUrl = `${VTEX_API_URL}/api/catalog_system/pub/products/crossselling/similars/${productId}`;
+        const recommendations = await fetchFromVtex(recommendationsUrl, headers);
+
+        res.json(recommendations);
+    } catch (error) {
+        console.error('Error fetching recommendations:', error);
+        res.status(500).send('Error fetching recommendation products from VTEX API');
+    }
+});
 
 
 app.get('/cart-with-product-details/:orderFormId', async (req, res) => {
