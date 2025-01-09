@@ -30,6 +30,125 @@ const fetchFromVtex = async (url, headers = {}) => {
 };
 
 
+app.get('/cart-with-product-details/:orderFormId', async (req, res) => {
+    try {
+        const { orderFormId } = req.params;
+        if (!orderFormId) {
+            return res.status(400).send('Order Form ID is required');
+        }
+
+        const headers = {
+            'X-VTEX-API-AppKey': VTEX_API_APP_KEY,
+            'X-VTEX-API-AppToken': VTEX_API_APP_TOKEN,
+        };
+        const orderFormUrl = `${VTEX_API_URL}/api/checkout/pub/orderForm/${orderFormId}`;
+        const orderForm = await fetchFromVtex(orderFormUrl, headers);
+        if (!orderForm.items || orderForm.items.length === 0) {
+            return res.json({ ...orderForm, productDetails: [] });
+        }
+
+        const productDetailsPromises = orderForm.items.map(async (item) => {
+            const skuId = item.id;
+            const skuDetailsUrl = `${VTEX_API_URL}/api/catalog_system/pvt/sku/stockkeepingunitbyid/${skuId}`;
+            try {
+                const skuDetails = await fetchFromVtex(skuDetailsUrl, headers);
+                return { ...item, skuDetails };
+            } catch (error) {
+                console.error(`Error fetching SKU details for SKU ID: ${skuId}`, error.message);
+                return { ...item, skuDetails: null, error: 'Failed to fetch SKU details' };
+            }
+        });
+        const productDetails = await Promise.all(productDetailsPromises);
+
+        res.json({ ...orderForm, productDetails });
+    } catch (error) {
+        console.error('Error combining OrderForm and SKU details:', error.message);
+        res.status(500).send('Error combining OrderForm and SKU details');
+    }
+});
+
+
+//product fetch by product id
+// app.get('/product/:productId', async (req, res) => {
+//     try {
+//         const productId = req.params.productId; // Get product ID from the URL
+//         if (!productId) {
+//             return res.status(400).send('Product ID is required');
+//         }
+
+//         const headers = {
+//             'X-VTEX-API-AppKey': VTEX_API_APP_KEY,
+//             'X-VTEX-API-AppToken': VTEX_API_APP_TOKEN,
+//         };
+
+//         const url = `${VTEX_API_URL}/api/catalog_system/pub/products/variations/${productId}`;
+//         const productVariations = await fetchFromVtex(url, headers);
+
+//         res.json(productVariations);
+//     } catch (error) {
+//         console.error('Error fetching product variations:', error);
+//         res.status(500).send('Error fetching product variations from VTEX API');
+//     }
+// });
+
+
+app.get('/product/:productId', async (req, res) => {
+    try {
+        const productId = req.params.productId; // Get Product ID from the URL
+        if (!productId) {
+            return res.status(400).send('Product ID is required');
+        }
+
+        const headers = {
+            'X-VTEX-API-AppKey': VTEX_API_APP_KEY,
+            'X-VTEX-API-AppToken': VTEX_API_APP_TOKEN,
+        };
+
+        // Fetch product details
+        const productUrl = `${VTEX_API_URL}/api/catalog_system/pub/products/variations/${productId}`;
+        const productData = await fetchFromVtex(productUrl, headers);
+
+        if (!productData || !productData.skus || productData.skus.length === 0) {
+            return res.status(404).send('No SKUs found for the given product ID');
+        }
+
+        // Fetch SKU details for each SKU
+        const skuPromises = productData.skus.map(async (sku) => {
+            const skuUrl = `${VTEX_API_URL}/api/catalog_system/pvt/sku/stockkeepingunitbyid/${sku.sku}`;
+            return fetchFromVtex(skuUrl, headers);
+        });
+
+        const skuDetails = await Promise.all(skuPromises);
+
+        // Combine product data with SKU details
+        const combinedData = {
+            ...productData,
+            skus: productData.skus.map((sku, index) => ({
+                ...sku,
+                additionalDetails: skuDetails[index],
+            })),
+        };
+
+        res.json(combinedData);
+    } catch (error) {
+        console.error('Error fetching product and SKU details:', error);
+        res.status(500).send('Error fetching product and SKU details from VTEX API');
+    }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //OrderForm API
 app.get('/cart/', async (req, res) => {
